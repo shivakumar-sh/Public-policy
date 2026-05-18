@@ -1,59 +1,63 @@
-/**
- * SSE (Server-Sent Events) Stream Handler
- */
+// backend/utils/streamHandler.js
+// Purpose: Manages Server-Sent Events (SSE) streaming responses to the frontend
+
+const { createStreamingResponse } = require('./openaiHelper');
 
 const setupSSEHeaders = (res) => {
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-    'Access-Control-Allow-Origin': '*',
-  });
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('Access-Control-Allow-Origin', process.env.FRONTEND_URL || '*');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
 };
 
-const sendSSEChunk = (res, data) => {
-  res.write(`data: ${JSON.stringify(data)}\n\n`);
+const sendChunk = (res, content) => {
+  res.write(`data: ${JSON.stringify({ type: 'chunk', content })}\n\n`);
 };
 
-const sendSSEDone = (res) => {
-  res.write('data: [DONE]\n\n');
+const sendMetadata = (res, metadata) => {
+  res.write(`data: ${JSON.stringify({ type: 'metadata', ...metadata })}\n\n`);
+};
+
+const sendDone = (res) => {
+  res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
   res.end();
 };
 
-const sendSSEError = (res, error) => {
-  res.write(`data: ${JSON.stringify({ error: error.message || 'Streaming Error' })}\n\n`);
+const sendError = (res, errorMessage) => {
+  res.write(`data: ${JSON.stringify({ type: 'error', message: errorMessage })}\n\n`);
   res.end();
 };
 
-const streamChatResponse = async (res, openai, messages, options = {}) => {
-  setupSSEHeaders(res);
-  
+const streamChatResponse = async (res, messages, options, onComplete) => {
   try {
-    const stream = await openai.chat.completions.create({
-      model: options.model || "gpt-3.5-turbo",
-      messages,
-      temperature: options.temperature || 0.7,
-      stream: true,
-    });
+    const stream = await createStreamingResponse(messages, options);
+    setupSSEHeaders(res);
+    let fullContent = '';
 
     for await (const chunk of stream) {
-      const content = chunk.choices[0]?.delta?.content || "";
-      if (content) {
-        sendSSEChunk(res, { content });
+      const delta = chunk.choices[0]?.delta?.content || '';
+      if (delta) {
+        fullContent += delta;
+        sendChunk(res, delta);
       }
     }
 
-    sendSSEDone(res);
+    if (onComplete) {
+      await onComplete(fullContent);
+    }
   } catch (error) {
-    console.error('SSE Stream Error:', error);
-    sendSSEError(res, error);
+    console.error('❌ Streaming Error:', error.message);
+    sendError(res, error.message || 'Error during streaming response');
   }
 };
 
 module.exports = {
   setupSSEHeaders,
-  sendSSEChunk,
-  sendSSEDone,
-  sendSSEError,
+  sendChunk,
+  sendMetadata,
+  sendDone,
+  sendError,
   streamChatResponse
 };

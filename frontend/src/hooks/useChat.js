@@ -1,174 +1,181 @@
-import { useState, useCallback, useEffect } from 'react';
-import chatService from '../services/chatService';
-import { toast } from 'react-hot-toast';
+// frontend/src/hooks/useChat.js
+// Purpose: Comprehensive React hook managing chat conversations, streaming, and sidebar history
 
-/**
- * useChat Hook
- * Manages chat state, messaging, streaming, and history
- */
-const useChat = (initialChatId = null) => {
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { getChatHistory, getChatById, deleteChat as apiDeleteChat, sendMessage as apiSendMessage } from '../services/chatService';
+import useStream from './useStream';
+
+const useChat = () => {
   const [messages, setMessages] = useState([]);
+  const [currentChatId, setCurrentChatId] = useState(null);
   const [chats, setChats] = useState([]);
-  const [currentChatId, setCurrentChatId] = useState(initialChatId);
   const [isTyping, setIsTyping] = useState(false);
-  const [isStreaming, setIsStreaming] = useState(false);
   const [followUps, setFollowUps] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [currentLanguage, setCurrentLanguage] = useState('en');
 
-  /**
-   * Load all chats for the sidebar
-   */
-  const loadChats = useCallback(async () => {
+  const messagesEndRef = useRef(null);
+  const { streamingText, isStreaming, startStream } = useStream();
+
+  const scrollToBottom = useCallback(() => {
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 50);
+  }, []);
+
+  const loadChatHistory = useCallback(async () => {
     try {
-      const data = await chatService.getChatHistory();
-      // data structure is { success: true, data: { chats: [], pagination: {} } }
-      // but api.js might be unwrapping it differently. 
-      // Based on chatService.js: api.get(...).then(res => res.data)
-      // So data is { chats: [], pagination: {} }
-      setChats(data.chats || []);
-    } catch (error) {
-      console.error('Failed to load chat history:', error);
+      const history = await getChatHistory(1, 30);
+      setChats(history || []);
+    } catch (err) {
+      console.error('Failed to load chat history:', err);
     }
   }, []);
 
-  // Initial load of history
   useEffect(() => {
-    loadChats();
-  }, [loadChats]);
+    loadChatHistory();
+  }, [loadChatHistory]);
 
-  // Load specific chat if ID provided
   useEffect(() => {
-    if (initialChatId) {
-      loadChat(initialChatId);
-    }
-  }, [initialChatId]);
+    scrollToBottom();
+  }, [messages, streamingText, scrollToBottom]);
 
-  /**
-   * Load messages for a single chat
-   */
-  const loadChat = async (chatId) => {
+  const startNewChat = useCallback(() => {
+    setMessages([]);
+    setCurrentChatId(null);
+    setFollowUps([]);
+    setError(null);
+  }, []);
+
+  const loadChat = useCallback(async (chatId) => {
     if (!chatId) return;
-    setLoading(true);
+    setIsLoading(true);
+    setError(null);
     try {
-      const history = await chatService.getChatMessages(chatId);
-      setMessages(history);
-      setCurrentChatId(chatId);
-    } catch (error) {
-      toast.error('Failed to load chat messages');
+      const chat = await getChatById(chatId);
+      if (chat) {
+        setMessages(chat.messages || []);
+        setCurrentChatId(chat._id);
+        setFollowUps([]);
+      }
+    } catch (err) {
+      setError('Failed to load chat messages');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
-  };
+  }, []);
 
-  /**
-   * Send a message (streaming or standard)
-   */
-  const sendMessage = async (text, language = 'en', stream = true) => {
-    if (!text.trim()) return;
+  const deleteChat = useCallback(async (chatId) => {
+    try {
+      const success = await apiDeleteChat(chatId);
+      if (success) {
+        setChats(prev => prev.filter(c => c._id !== chatId));
+        if (currentChatId === chatId) {
+          startNewChat();
+        }
+      }
+    } catch (err) {
+      setError('Failed to delete chat');
+    }
+  }, [currentChatId, startNewChat]);
 
-    // Add user message to UI immediately
+  const sendMessage = useCallback((text) => {
+    if (!text || !text.trim()) return;
+
     const userMsg = { role: 'user', content: text, timestamp: new Date() };
     setMessages(prev => [...prev, userMsg]);
     setIsTyping(true);
     setFollowUps([]);
+    setError(null);
 
-    if (stream) {
-      setIsStreaming(true);
-      let aiContent = "";
-      
-      // Add empty assistant message to be filled by stream
-      setMessages(prev => [...prev, { role: 'assistant', content: '', timestamp: new Date() }]);
+    let capturedChatId = currentChatId;
+    let capturedFollowUps = [];
 
-      await chatService.streamMessage(
-        text,
-        currentChatId,
-        language,
-        (chunk) => {
-          setIsTyping(false);
-          aiContent += chunk;
-          setMessages(prev => {
-            const last = prev[prev.length - 1];
-            const updated = { ...last, content: aiContent };
-            return [...prev.slice(0, -1), updated];
-          });
+    startStream(
+      { chatId: currentChatId, message: text, language: currentLanguage },
+      {
+        onMetadata: (meta) => {
+          if (meta.chatId) capturedChatId = meta.chatId;
+          if (meta.followUps) capturedFollowUps = meta.followUps;
         },
-        () => {
-          setIsStreaming(false);
-          // Refresh history to show new chat title if it's the first message
-          if (!currentChatId) {
-            loadChats();
+        onComplete: () => {
+          setIsTyping(false);
+          setMessages(prev => {
+            // Replace temporary streaming text with finalized message
+            return [...prev, { role: 'assistant', content: streamingText, timestamp: new Date() }];
+          });
+          if (capturedChatId && capturedChatId !== currentChatId) {
+            setCurrentChatId(capturedChatId);
+            loadChatHistory();
+          }
+          if (capturedFollowUps.length > 0) {
+            setFollowUps(capturedFollowUps);
           }
         },
-        (error) => {
-          setIsStreaming(false);
+        onError: (err) => {
           setIsTyping(false);
-          toast.error(error.message || 'Error streaming response');
+          setError(err.message || 'Failed to generate AI response');
         }
-      );
-    } else {
-      try {
-        const result = await chatService.sendMessage(text, currentChatId, language);
-        setMessages(prev => [...prev, { 
-          role: 'assistant', 
-          content: result.data.response, 
-          timestamp: new Date() 
-        }]);
-        
-        if (!currentChatId) {
-          setCurrentChatId(result.data.chatId);
-          loadChats();
-        }
-        
-        setFollowUps(result.data.followUps || []);
-      } catch (error) {
-        toast.error(error.response?.data?.message || 'Failed to send message');
-      } finally {
-        setIsTyping(false);
       }
-    }
-  };
+    );
+  }, [currentChatId, currentLanguage, startStream, streamingText, loadChatHistory]);
 
-  /**
-   * Reset state for a new chat
-   */
-  const startNewChat = () => {
-    setMessages([]);
-    setCurrentChatId(null);
+  const sendMessageNonStream = useCallback(async (text) => {
+    if (!text || !text.trim()) return;
+
+    const userMsg = { role: 'user', content: text, timestamp: new Date() };
+    setMessages(prev => [...prev, userMsg]);
+    setIsTyping(true);
     setFollowUps([]);
-  };
+    setError(null);
 
-  /**
-   * Delete a chat and refresh list
-   */
-  const deleteChat = async (chatId) => {
     try {
-      await chatService.deleteChat(chatId);
-      setChats(prev => prev.filter(c => c._id !== chatId));
-      if (currentChatId === chatId) {
-        startNewChat();
+      const res = await apiSendMessage({ chatId: currentChatId, message: text, language: currentLanguage });
+      if (res.data) {
+        setMessages(prev => [...prev, { role: 'assistant', content: res.data.response, timestamp: new Date() }]);
+        if (!currentChatId) {
+          setCurrentChatId(res.data.chatId);
+          loadChatHistory();
+        }
+        setFollowUps(res.data.followUps || []);
       }
-      toast.success('Chat deleted');
-    } catch (error) {
-      toast.error('Failed to delete chat');
+    } catch (err) {
+      setError(err.message || 'Failed to send message');
+    } finally {
+      setIsTyping(false);
     }
-  };
+  }, [currentChatId, currentLanguage, loadChatHistory]);
+
+  const handleFollowUp = useCallback((question) => {
+    sendMessage(question);
+  }, [sendMessage]);
+
+  const setLanguage = useCallback((langCode) => {
+    setCurrentLanguage(langCode);
+  }, []);
 
   return {
     messages,
-    chats,
     currentChatId,
-    currentChat: chats.find(c => c._id === currentChatId),
+    chats,
     isTyping,
     isStreaming,
+    streamingText,
     followUps,
-    loading,
+    isLoading,
+    error,
+    currentLanguage,
+    messagesEndRef,
     sendMessage,
+    sendMessageNonStream,
     startNewChat,
-    newChat: startNewChat,
     loadChat,
-    loadChats,
+    loadChatHistory,
     deleteChat,
-    setMessages
+    handleFollowUp,
+    setLanguage,
+    scrollToBottom
   };
 };
 

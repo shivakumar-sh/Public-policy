@@ -1,64 +1,77 @@
+// backend/services/summarizeService.js
+// Purpose: Handles PDF and document summarization with caching and multi-language support
+
 const Document = require('../models/Document');
-const { callOpenAI } = require('../utils/openaiHelper');
-const { buildSummaryPrompt } = require('../utils/promptBuilder');
-const { truncateToTokenLimit } = require('../utils/tokenCounter');
+const AICache = require('../models/AICache');
+const { buildSummaryMessages } = require('../utils/promptBuilder');
+const { callOpenAIWithFallback, callOpenAIForJSON } = require('../utils/openaiHelper');
+const translateService = require('./translateService');
+const faqService = require('./faqService');
+const { truncateText } = require('../utils/tokenCounter');
 
-/**
- * Summarization Service
- * Handles PDF text analysis and summary generation
- */
-const summarizeService = {
-  /**
-   * Summarize a document stored in database
-   */
-  summarizeDocument: async (documentId, userId, language = 'en') => {
-    const doc = await Document.findOne({ _id: documentId, user: userId });
-    
-    if (!doc) throw new Error('Document not found');
-    if (!doc.extractedText) throw new Error('No text extracted from document');
+const summarizeDocument = async (documentId, userId, language = 'en') => {
+  const document = await Document.findOne({ _id: documentId, user: userId });
+  if (!document) throw new Error('Document not found');
+  if (document.status === 'processing') throw new Error('Document still processing');
 
-    try {
-      const messages = buildSummaryPrompt(doc.extractedText, language);
-      const summary = await callOpenAI(messages, { temperature: 0.3, max_tokens: 2000 });
-
-      doc.summary = summary;
-      doc.status = 'completed';
-      doc.language = language;
-      await doc.save();
-
-      return summary;
-    } catch (error) {
-      doc.status = 'failed';
-      await doc.save();
-      throw error;
-    }
-  },
-
-  /**
-   * Summarize arbitrary text directly
-   */
-  summarizeText: async (text, language = 'en') => {
-    const truncatedText = truncateToTokenLimit(text, 3500);
-    const messages = buildSummaryPrompt(truncatedText, language);
-    return await callOpenAI(messages, { temperature: 0.3 });
-  },
-
-  /**
-   * Extract key features as JSON
-   */
-  extractKeyPoints: async (text) => {
-    const prompt = [
-      { 
-        role: 'system', 
-        content: 'Extract 5-7 key points from the following policy text. Return as a JSON array of strings only.' 
-      },
-      { role: 'user', content: text.substring(0, 8000) }
-    ];
-    
-    const response = await callOpenAI(prompt, { temperature: 0.3 });
-    const cleaned = response.replace(/```json|```/g, '').trim();
-    return JSON.parse(cleaned);
+  if (document.summary && language === 'en') {
+    return document.summary;
   }
+
+  const cached = await AICache.getCached('summarize', document.extractedText, language);
+  if (cached) return cached;
+
+  const messages = buildSummaryMessages(document.extractedText, language);
+  let summaryText = await callOpenAIWithFallback(messages, { temperature: 0.3, max_tokens: 2000 });
+
+  if (language !== 'en') {
+    summaryText = await translateService.translateText(summaryText, language);
+  }
+
+  document.summary = summaryText;
+  document.status = 'completed';
+  await document.save();
+
+  await AICache.setCached('summarize', document.extractedText, language, summaryText, 48);
+
+  return summaryText;
 };
 
-module.exports = summarizeService;
+const summarizeText = async (rawText, documentName, language = 'en') => {
+  const truncated = truncateText(rawText, 2500);
+  const cached = await AICache.getCached('summarize_text', truncated, language);
+  if (cached) return cached;
+
+  const messages = buildSummaryMessages(truncated, language);
+  let summaryText = await callOpenAIWithFallback(messages, { temperature: 0.3, max_tokens: 2000 });
+
+  if (language !== 'en') {
+    summaryText = await translateService.translateText(summaryText, language);
+  }
+
+  await AICache.setCached('summarize_text', truncated, language, summaryText, 48);
+  return summaryText;
+};
+
+const extractKeyPoints = async (text, count = 7) => {
+  const messages = [
+    { role: 'system', content: `Extract exactly ${count} key points from the text. Return ONLY a JSON array of strings.` },
+    { role: 'user', content: text }
+  ];
+  const result = await callOpenAIForJSON(messages);
+  if (Array.isArray(result)) return result.slice(0, count);
+  return [];
+};
+
+const generateDocumentFAQ = async (documentId, userId, language = 'en') => {
+  const document = await Document.findOne({ _id: documentId, user: userId });
+  if (!document) throw new Error('Document not found');
+  return await faqService.generateFAQsFromText(document.title || 'Document', document.extractedText, language);
+};
+
+module.exports = {
+  summarizeDocument,
+  summarizeText,
+  extractKeyPoints,
+  generateDocumentFAQ
+};

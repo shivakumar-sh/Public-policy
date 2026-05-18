@@ -1,34 +1,64 @@
+// backend/services/compareService.js
+// Purpose: Objective side-by-side comparison of two government policies
+
 const Policy = require('../models/Policy');
-const { callOpenAI } = require('../utils/openaiHelper');
-const { buildComparePrompt } = require('../utils/promptBuilder');
+const AICache = require('../models/AICache');
+const { buildCompareMessages } = require('../utils/promptBuilder');
+const { callOpenAIWithFallback, callOpenAIForJSON } = require('../utils/openaiHelper');
+const translateService = require('./translateService');
 
-/**
- * Policy Comparison Service
- * Compares two policies side-by-side
- */
-const compareService = {
-  /**
-   * Compare two policies by ID
-   */
-  comparePolicies: async (policyId1, policyId2, language = 'en') => {
-    const [p1, p2] = await Promise.all([
-      Policy.findById(policyId1),
-      Policy.findById(policyId2)
-    ]);
+const comparePolicies = async (policyId1, policyId2, language = 'en') => {
+  const [policy1, policy2] = await Promise.all([
+    Policy.findById(policyId1),
+    Policy.findById(policyId2)
+  ]);
 
-    if (!p1 || !p2) throw new Error('One or both policies not found');
+  if (!policy1 || !policy2) throw new Error('One or both policies not found');
 
-    const messages = buildComparePrompt(p1, p2, language);
-    return await callOpenAI(messages, { temperature: 0.5 });
-  },
+  const cacheKeyInput = `${policyId1}:${policyId2}`;
+  const cached = await AICache.getCached('compare', cacheKeyInput, language);
+  if (cached) return cached;
 
-  /**
-   * Compare two policy texts directly
-   */
-  compareTexts: async (p1Obj, p2Obj, language = 'en') => {
-    const messages = buildComparePrompt(p1Obj, p2Obj, language);
-    return await callOpenAI(messages, { temperature: 0.5 });
+  const messages = buildCompareMessages(policy1, policy2, language);
+  let comparisonText = await callOpenAIWithFallback(messages, { temperature: 0.5, max_tokens: 2000 });
+
+  if (language !== 'en') {
+    comparisonText = await translateService.translateText(comparisonText, language);
   }
+
+  await AICache.setCached('compare', cacheKeyInput, language, comparisonText, 48);
+
+  return comparisonText;
 };
 
-module.exports = compareService;
+const compareTexts = async (policy1Object, policy2Object, language = 'en') => {
+  const messages = buildCompareMessages(policy1Object, policy2Object, language);
+  let comparisonText = await callOpenAIWithFallback(messages, { temperature: 0.5, max_tokens: 2000 });
+
+  if (language !== 'en') {
+    comparisonText = await translateService.translateText(comparisonText, language);
+  }
+  return comparisonText;
+};
+
+const generateComparisonTable = async (policyId1, policyId2) => {
+  const [policy1, policy2] = await Promise.all([
+    Policy.findById(policyId1),
+    Policy.findById(policyId2)
+  ]);
+
+  if (!policy1 || !policy2) throw new Error('Policies not found');
+
+  const messages = [
+    { role: 'system', content: 'Compare these two policies and return a JSON comparison table. Return JSON: { "headers": ["Feature", "Policy1Name", "Policy2Name"], "rows": [{ "feature": "Purpose", "policy1": "value", "policy2": "value" }] }' },
+    { role: 'user', content: `Policy 1: ${policy1.title}\nContent: ${policy1.content}\n\nPolicy 2: ${policy2.title}\nContent: ${policy2.content}` }
+  ];
+
+  return await callOpenAIForJSON(messages) || { headers: ['Feature', policy1.title, policy2.title], rows: [] };
+};
+
+module.exports = {
+  comparePolicies,
+  compareTexts,
+  generateComparisonTable
+};

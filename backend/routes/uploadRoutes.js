@@ -5,7 +5,7 @@ const {
   getDocuments,
   deleteDocument,
 } = require('../controllers/uploadController');
-const { summarizeDocument } = require('../controllers/chatController');
+const { summarizeUploadedDocument: summarizeDocument } = require('../controllers/chatController');
 const { protect } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
 

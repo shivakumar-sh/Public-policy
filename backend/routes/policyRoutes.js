@@ -8,7 +8,7 @@ const {
   deletePolicy,
   simplifyPolicy,
 } = require('../controllers/policyController');
-const { comparePolicies, generateFAQs } = require('../controllers/chatController');
+const { compareTwoPolicies: comparePolicies, generatePolicyFAQs: generateFAQs } = require('../controllers/chatController');
 const { protect } = require('../middleware/authMiddleware');
 const { admin } = require('../middleware/adminMiddleware');
 

@@ -1,104 +1,128 @@
+// frontend/src/services/chatService.js
+// Purpose: Axios wrapper for communicating with backend AI endpoints
+
 import api from './api';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+export const sendMessage = async ({ chatId, message, language }) => {
+  const response = await api.post('/chat/send', { chatId, message, language });
+  return response.data;
+};
 
-const chatService = {
-  /**
-   * Send a message and get full response
-   */
-  sendMessage: (message, chatId, language = 'en') => 
-    api.post('/chat/send', { message, chatId, language }).then(res => res.data),
+export const streamMessage = async ({ chatId, message, language }, callbacks) => {
+  const { onChunk, onMetadata, onDone, onError } = callbacks;
+  const token = localStorage.getItem('token');
+  const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
-  /**
-   * Stream message response using Fetch/ReadableStream
-   */
-  streamMessage: async (message, chatId, language, onChunk, onDone, onError) => {
-    try {
-      const user = JSON.parse(localStorage.getItem('user'));
-      const token = user?.token;
+  try {
+    const response = await fetch(`${baseUrl}/chat/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({ chatId, message, language })
+    });
 
-      const response = await fetch(`${API_URL}/chat/stream`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ message, chatId, language })
-      });
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.message || 'Stream connection failed');
+    }
 
-      if (!response.ok) throw new Error('Network response was not ok');
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || ''; // keep incomplete last line in buffer
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') {
-              onDone();
-              return;
-            }
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed.content) {
-                onChunk(parsed.content);
-              }
-              if (parsed.error) {
-                onError(new Error(parsed.error));
-              }
-            } catch (e) {}
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === '[DONE]') {
+            if (onDone) onDone();
+            continue;
+          }
+          try {
+            const parsed = JSON.parse(jsonStr);
+            if (parsed.type === 'chunk' && onChunk) onChunk(parsed.content);
+            else if (parsed.type === 'metadata' && onMetadata) onMetadata(parsed);
+            else if (parsed.type === 'done' && onDone) onDone();
+            else if (parsed.type === 'error' && onError) onError(new Error(parsed.message));
+          } catch (e) {
+            // ignore malformed JSON chunk
           }
         }
       }
-      onDone();
-    } catch (error) {
-      console.error('Streaming Error:', error);
-      onError(error);
     }
-  },
+  } catch (error) {
+    if (onError) onError(error);
+  }
+};
 
-  /**
-   * Get paginated chat history
-   */
-  getChatHistory: (page = 1, limit = 20) => 
-    api.get(`/chat/history?page=${page}&limit=${limit}`).then(res => res.data),
+export const getChatHistory = async (page = 1, limit = 20) => {
+  const response = await api.get(`/chat/history?page=${page}&limit=${limit}`);
+  return response.data?.data?.items || [];
+};
 
-  /**
-   * Get messages for a specific chat
-   */
-  getChatMessages: (chatId) => 
-    api.get(`/chat/${chatId}`).then(res => res.data),
+export const getChatById = async (chatId) => {
+  const response = await api.get(`/chat/${chatId}`);
+  return response.data?.data || null;
+};
 
-  /**
-   * Delete a chat
-   */
-  deleteChat: (chatId) => 
-    api.delete(`/chat/${chatId}`).then(res => res.data),
+export const deleteChat = async (chatId) => {
+  const response = await api.delete(`/chat/${chatId}`);
+  return response.data?.success || false;
+};
 
-  /**
-   * Policy specific AI actions
-   */
-  simplifyPolicy: (policyId, language) => 
-    api.post(`/policies/${policyId}/simplify`, { language }).then(res => res.data),
-    
-  comparePolicies: (policyId1, policyId2, language) => 
-    api.post('/policies/compare', { policyId1, policyId2, language }).then(res => res.data),
-    
-  generateFAQs: (policyId, language) => 
-    api.post(`/policies/${policyId}/faq`, { language }).then(res => res.data),
-    
-  summarizeDocument: (documentId, language) => 
-    api.post(`/upload/${documentId}/summarize`, { language }).then(res => res.data),
-    
-  getRecommendations: () => 
-    api.get('/users/recommendations').then(res => res.data),
+export const translateMessage = async (text, language) => {
+  const response = await api.post('/chat/translate', { text, language });
+  return response.data?.data?.translated || text;
+};
+
+export const simplifyPolicy = async (policyId, language) => {
+  const response = await api.post(`/chat/policies/${policyId}/simplify`, { language });
+  return response.data?.data?.simplified || '';
+};
+
+export const comparePolicies = async (policyId1, policyId2, language) => {
+  const response = await api.post('/chat/policies/compare', { policyId1, policyId2, language });
+  return response.data?.data?.comparison || '';
+};
+
+export const generateFAQs = async (policyId, language) => {
+  const response = await api.post(`/chat/policies/${policyId}/faq`, { language });
+  return response.data?.data?.faqs || [];
+};
+
+export const summarizeDocument = async (documentId, language) => {
+  const response = await api.post(`/chat/documents/${documentId}/summarize`, { language });
+  return response.data?.data?.summary || '';
+};
+
+export const getRecommendations = async () => {
+  const response = await api.get('/chat/recommendations');
+  return response.data?.data?.recommendations || [];
+};
+
+const chatService = {
+  sendMessage,
+  send: sendMessage,
+  streamMessage,
+  getChatHistory,
+  getHistory: getChatHistory,
+  getChatById,
+  deleteChat,
+  translateMessage,
+  simplifyPolicy,
+  comparePolicies,
+  generateFAQs,
+  summarizeDocument,
+  getRecommendations
 };
 
 export default chatService;

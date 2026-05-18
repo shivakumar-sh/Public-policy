@@ -6,7 +6,7 @@ const {
   removeBookmark,
   getUserStats,
 } = require('../controllers/userController');
-const { getRecommendations } = require('../controllers/chatController');
+const { getUserRecommendations: getRecommendations } = require('../controllers/chatController');
 const { protect } = require('../middleware/authMiddleware');
 
 router.get('/bookmarks', protect, getBookmarks);

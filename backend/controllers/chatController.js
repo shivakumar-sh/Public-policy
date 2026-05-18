@@ -1,4 +1,6 @@
-const asyncHandler = require('express-async-handler');
+// backend/controllers/chatController.js
+// Purpose: Express controller handling HTTP requests for all AI services
+
 const chatService = require('../services/chatService');
 const summarizeService = require('../services/summarizeService');
 const simplifyService = require('../services/simplifyService');
@@ -6,174 +8,158 @@ const translateService = require('../services/translateService');
 const compareService = require('../services/compareService');
 const faqService = require('../services/faqService');
 const recommendService = require('../services/recommendService');
-const { streamOpenAI } = require('../utils/openaiHelper');
-const { buildChatPrompt } = require('../utils/promptBuilder');
-const Chat = require('../models/Chat');
 
-/**
- * Chat Controller
- * Orchestrates all AI-related endpoints
- */
+const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-// @desc    Send a message to the AI
-// @route   POST /api/chat/send
-// @access  Private
 const sendMessage = asyncHandler(async (req, res) => {
-  const { message, chatId, language } = req.body;
-  const lang = language || 'en';
+  const { message, language, chatId } = req.body;
+  const userId = req.user?._id;
 
-  if (!message) {
-    res.status(400);
-    throw new Error('Message is required');
-  }
+  const result = await chatService.processChat(userId, chatId, message, language);
 
-  const result = await chatService.processChat(req.user._id, chatId, message, lang);
-
-  res.json({
+  return res.status(200).json({
     success: true,
-    data: result
+    data: {
+      response: result.response,
+      chatId: result.chatId,
+      chatTitle: result.chatTitle,
+      followUps: result.followUps,
+      language: result.language
+    },
+    timestamp: new Date().toISOString()
   });
 });
 
-// @desc    Stream AI response via SSE
-// @route   POST /api/chat/stream
-// @access  Private
 const streamMessage = asyncHandler(async (req, res) => {
-  const { message, chatId, language } = req.body;
-  const lang = language || 'en';
+  const { message, language, chatId } = req.body;
+  const userId = req.user?._id;
 
-  if (!message) {
-    res.status(400);
-    throw new Error('Message is required');
-  }
-
-  let chat;
-  if (chatId) {
-    chat = await Chat.findOne({ _id: chatId, user: req.user._id });
-  }
-
-  if (!chat) {
-    chat = await Chat.create({
-      user: req.user._id,
-      title: message.substring(0, 30) + '...',
-      language: lang,
-      messages: []
-    });
-  }
-
-  const history = chat.messages.map(m => ({ role: m.role, content: m.content }));
-  const promptMessages = buildChatPrompt(message, lang, history);
-
-  // We'll stream the response and save it once done
-  // Note: For production, you'd want to handle the saving in the stream handler
-  await streamOpenAI(promptMessages, res);
+  await chatService.processChatWithStream(userId, chatId, message, language, res);
 });
 
-// @desc    Get user's chat history
-// @route   GET /api/chat/history
-// @access  Private
 const getChatHistory = asyncHandler(async (req, res) => {
-  const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 20;
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.max(1, parseInt(req.query.limit) || 20);
+  const userId = req.user?._id;
 
-  const result = await chatService.getChatHistory(req.user._id, page, limit);
+  const result = await chatService.getUserChats(userId, page, limit);
 
-  res.json({
+  return res.status(200).json({
     success: true,
-    data: result
+    data: {
+      items: result.chats,
+      total: result.total,
+      page: result.page,
+      totalPages: result.totalPages
+    },
+    timestamp: new Date().toISOString()
   });
 });
 
-// @desc    Get a single chat with messages
-// @route   GET /api/chat/:id
-// @access  Private
 const getChatById = asyncHandler(async (req, res) => {
-  const messages = await chatService.getChatMessages(req.params.id, req.user._id);
-  res.json({
+  const chatId = req.params.id;
+  const userId = req.user?._id;
+
+  const chat = await chatService.getChatById(chatId, userId);
+
+  return res.status(200).json({
     success: true,
-    data: messages
+    data: chat,
+    timestamp: new Date().toISOString()
   });
 });
 
-// @desc    Delete a chat
-// @route   DELETE /api/chat/:id
-// @access  Private
 const deleteChat = asyncHandler(async (req, res) => {
-  const result = await chatService.deleteChat(req.params.id, req.user._id);
-  res.json({
+  const chatId = req.params.id;
+  const userId = req.user?._id;
+
+  await chatService.deleteChatById(chatId, userId);
+
+  return res.status(200).json({
     success: true,
-    message: result.message
+    message: 'Chat deleted successfully',
+    timestamp: new Date().toISOString()
   });
 });
 
-// @desc    Translate text
-// @route   POST /api/chat/translate
-// @access  Private
 const translateMessage = asyncHandler(async (req, res) => {
   const { text, language } = req.body;
-  const result = await translateService.translateText(text, language);
-  res.json({
+  if (!text || !language) {
+    return res.status(400).json({ success: false, message: 'Text and language are required' });
+  }
+
+  const translated = await translateService.translateText(text, language);
+
+  return res.status(200).json({
     success: true,
-    data: result
+    data: { translated, language },
+    timestamp: new Date().toISOString()
   });
 });
 
-// @desc    Simplify a policy
-// @route   POST /api/policies/:id/simplify
-// @access  Private
-const simplifyPolicy = asyncHandler(async (req, res) => {
-  const { language } = req.body;
-  const result = await simplifyService.simplifyPolicy(req.params.id, language);
-  res.json({
+const simplifyPolicyById = asyncHandler(async (req, res) => {
+  const policyId = req.params.id;
+  const language = req.body.language || 'en';
+
+  const simplified = await simplifyService.simplifyPolicy(policyId, language);
+
+  return res.status(200).json({
     success: true,
-    data: result
+    data: { simplified, policyId },
+    timestamp: new Date().toISOString()
   });
 });
 
-// @desc    Compare two policies
-// @route   POST /api/policies/compare
-// @access  Private
-const comparePolicies = asyncHandler(async (req, res) => {
+const compareTwoPolicies = asyncHandler(async (req, res) => {
   const { policyId1, policyId2, language } = req.body;
-  const result = await compareService.comparePolicies(policyId1, policyId2, language);
-  res.json({
+  if (!policyId1 || !policyId2 || policyId1 === policyId2) {
+    return res.status(400).json({ success: false, message: 'Two distinct valid policy IDs are required' });
+  }
+
+  const comparison = await compareService.comparePolicies(policyId1, policyId2, language || 'en');
+
+  return res.status(200).json({
     success: true,
-    data: result
+    data: { comparison, policies: [policyId1, policyId2] },
+    timestamp: new Date().toISOString()
   });
 });
 
-// @desc    Generate FAQs for a policy
-// @route   POST /api/policies/:id/faq
-// @access  Private
-const generateFAQs = asyncHandler(async (req, res) => {
-  const { language } = req.body;
-  const result = await faqService.generateFAQs(req.params.id, language);
-  res.json({
+const generatePolicyFAQs = asyncHandler(async (req, res) => {
+  const policyId = req.params.id;
+  const language = req.body.language || 'en';
+
+  const faqs = await faqService.generateFAQs(policyId, language);
+
+  return res.status(200).json({
     success: true,
-    data: result
+    data: { faqs, policyId },
+    timestamp: new Date().toISOString()
   });
 });
 
-// @desc    Summarize an uploaded document
-// @route   POST /api/upload/:id/summarize
-// @access  Private
-const summarizeDocument = asyncHandler(async (req, res) => {
-  const { language } = req.body;
-  const result = await summarizeService.summarizeDocument(req.params.id, req.user._id, language);
-  res.json({
+const summarizeUploadedDocument = asyncHandler(async (req, res) => {
+  const documentId = req.params.id;
+  const language = req.body.language || 'en';
+  const userId = req.user?._id;
+
+  const summary = await summarizeService.summarizeDocument(documentId, userId, language);
+
+  return res.status(200).json({
     success: true,
-    data: result
+    data: { summary, documentId },
+    timestamp: new Date().toISOString()
   });
 });
 
-// @desc    Get personalized recommendations
-// @route   GET /api/users/recommendations
-// @access  Private
-const getRecommendations = asyncHandler(async (req, res) => {
-  const result = await recommendService.getRecommendations(req.user._id);
-  res.json({
+const getUserRecommendations = asyncHandler(async (req, res) => {
+  const userId = req.user?._id;
+  const recommendations = await recommendService.getPersonalizedRecommendations(userId);
+
+  return res.status(200).json({
     success: true,
-    data: result
+    data: { recommendations },
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -184,9 +170,9 @@ module.exports = {
   getChatById,
   deleteChat,
   translateMessage,
-  simplifyPolicy,
-  comparePolicies,
-  generateFAQs,
-  summarizeDocument,
-  getRecommendations
+  simplifyPolicyById,
+  compareTwoPolicies,
+  generatePolicyFAQs,
+  summarizeUploadedDocument,
+  getUserRecommendations
 };

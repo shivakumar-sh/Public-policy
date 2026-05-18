@@ -1,38 +1,59 @@
+// backend/services/simplifyService.js
+// Purpose: Transforms complex policy jargon into plain, accessible citizen language
+
 const Policy = require('../models/Policy');
-const { callOpenAI } = require('../utils/openaiHelper');
-const { buildSimplifyPrompt } = require('../utils/promptBuilder');
+const AICache = require('../models/AICache');
+const { buildSimplifyMessages } = require('../utils/promptBuilder');
+const { callOpenAIWithFallback, callOpenAIForJSON } = require('../utils/openaiHelper');
+const translateService = require('./translateService');
 
-/**
- * Simplification Service
- * Converts complex policy text into citizen-friendly language
- */
-const simplifyService = {
-  /**
-   * Simplify a policy from database
-   */
-  simplifyPolicy: async (policyId, language = 'en') => {
-    const policy = await Policy.findById(policyId);
-    if (!policy) throw new Error('Policy not found');
+const simplifyPolicy = async (policyId, language = 'en') => {
+  const policy = await Policy.findById(policyId);
+  if (!policy) throw new Error('Policy not found');
 
-    const messages = buildSimplifyPrompt(policy.content, policy.title, language);
-    const simplified = await callOpenAI(messages, { temperature: 0.3 });
+  const cached = await AICache.getCached('simplify', policy.content, language);
+  if (cached) return cached;
 
-    // Only save to DB if it's English, or we could have a map of translations
-    if (language === 'en') {
-      policy.simplifiedContent = simplified;
-      await policy.save();
-    }
+  const messages = buildSimplifyMessages(policy.title, policy.content, language);
+  let simplifiedText = await callOpenAIWithFallback(messages, { temperature: 0.5, max_tokens: 1500 });
 
-    return simplified;
-  },
-
-  /**
-   * Simplify arbitrary text
-   */
-  simplifyText: async (title, content, language = 'en') => {
-    const messages = buildSimplifyPrompt(content, title, language);
-    return await callOpenAI(messages, { temperature: 0.3 });
+  if (language !== 'en') {
+    simplifiedText = await translateService.translateText(simplifiedText, language);
   }
+
+  policy.simplifiedContent = simplifiedText;
+  await policy.save();
+
+  await AICache.setCached('simplify', policy.content, language, simplifiedText, 72);
+
+  return simplifiedText;
 };
 
-module.exports = simplifyService;
+const simplifyText = async (title, content, language = 'en') => {
+  const cached = await AICache.getCached('simplify_text', content, language);
+  if (cached) return cached;
+
+  const messages = buildSimplifyMessages(title, content, language);
+  let simplifiedText = await callOpenAIWithFallback(messages, { temperature: 0.5, max_tokens: 1500 });
+
+  if (language !== 'en') {
+    simplifiedText = await translateService.translateText(simplifiedText, language);
+  }
+
+  await AICache.setCached('simplify_text', content, language, simplifiedText, 72);
+  return simplifiedText;
+};
+
+const readingLevelCheck = async (text) => {
+  const messages = [
+    { role: 'system', content: 'Rate the reading difficulty of this text on a scale: 1 = Very Easy (Class 5), 10 = Very Hard (Legal Expert). Return JSON: { "score": number, "level": string, "suggestion": string }' },
+    { role: 'user', content: text }
+  ];
+  return await callOpenAIForJSON(messages) || { score: 5, level: 'Moderate', suggestion: 'Clear and readable.' };
+};
+
+module.exports = {
+  simplifyPolicy,
+  simplifyText,
+  readingLevelCheck
+};

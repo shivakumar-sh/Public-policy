@@ -1,84 +1,75 @@
+// frontend/src/components/VoiceInput.js
+// Purpose: Microphone button component wrapping Web Speech API recognition for voice input
+
 import React, { useState, useEffect } from 'react';
 import { HiMicrophone, HiStop } from 'react-icons/hi';
-import { toast } from 'react-hot-toast';
 
-const VoiceInput = ({ onResult, language = 'en' }) => {
+const VoiceInput = ({ language, onResult, disabled }) => {
   const [isRecording, setIsRecording] = useState(false);
-  const [recognition, setRecognition] = useState(null);
+  const [isSupported, setIsSupported] = useState(true);
+  const [recognitionInstance, setRecognitionInstance] = useState(null);
 
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      const recognitionInstance = new SpeechRecognition();
-      recognitionInstance.continuous = false;
-      recognitionInstance.interimResults = false;
-      
-      // Map app language to speech recognition locale
-      const langMap = {
-        en: 'en-IN',
-        hi: 'hi-IN',
-        kn: 'kn-IN',
-        ta: 'ta-IN'
-      };
-      recognitionInstance.lang = langMap[language] || 'en-IN';
-
-      recognitionInstance.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        onResult(transcript);
-        setIsRecording(false);
-      };
-
-      recognitionInstance.onerror = (event) => {
-        console.error('Speech recognition error:', event.error);
-        setIsRecording(false);
-        toast.error('Could not hear you. Please try again.');
-      };
-
-      recognitionInstance.onend = () => {
-        setIsRecording(false);
-      };
-
-      setRecognition(recognitionInstance);
-    }
-  }, [language, onResult]);
-
-  const toggleRecording = () => {
-    if (!recognition) {
-      toast.error('Voice recognition is not supported in your browser.');
+    if (!SpeechRecognition) {
+      setIsSupported(false);
       return;
     }
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    setRecognitionInstance(recognition);
+  }, []);
 
-    if (isRecording) {
-      recognition.stop();
-    } else {
-      try {
-        recognition.start();
-        setIsRecording(true);
-      } catch (e) {
-        recognition.stop();
-        setIsRecording(false);
-      }
-    }
+  const getSpeechCode = (lang) => {
+    const map = { en: 'en-IN', hi: 'hi-IN', kn: 'kn-IN', ta: 'ta-IN' };
+    return map[lang] || 'en-IN';
   };
+
+  const startRecording = () => {
+    if (!recognitionInstance) return;
+    recognitionInstance.lang = getSpeechCode(language);
+    recognitionInstance.onresult = (e) => {
+      const text = e.results[0][0].transcript;
+      onResult(text);
+      setIsRecording(false);
+    };
+    recognitionInstance.onerror = () => setIsRecording(false);
+    recognitionInstance.onend = () => setIsRecording(false);
+    recognitionInstance.start();
+    setIsRecording(true);
+  };
+
+  const stopRecording = () => {
+    if (!recognitionInstance) return;
+    recognitionInstance.stop();
+    setIsRecording(false);
+  };
+
+  if (!isSupported) {
+    return (
+      <button disabled title="Voice not supported in this browser" className="p-3 rounded-xl border border-slate-200 dark:border-slate-700 opacity-40 cursor-not-allowed">
+        <HiMicrophone size={20} />
+      </button>
+    );
+  }
+
+  if (isRecording) {
+    return (
+      <button onClick={stopRecording} title="Click to stop recording" className="p-3 rounded-xl bg-danger text-white animate-pulse shadow-md">
+        <HiStop size={20} />
+      </button>
+    );
+  }
 
   return (
     <button
-      type="button"
-      onClick={toggleRecording}
-      className={`p-2.5 rounded-xl transition-all relative ${
-        isRecording 
-        ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/30' 
-        : 'text-slate-400 hover:text-primary hover:bg-slate-100 dark:hover:bg-slate-800'
-      }`}
-      title={isRecording ? 'Stop Recording' : 'Voice Input'}
+      onClick={startRecording}
+      disabled={disabled}
+      title="Click to speak"
+      className="p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 transition-all text-slate-600 dark:text-slate-300"
     >
-      {isRecording ? <HiStop size={20} /> : <HiMicrophone size={20} />}
-      {isRecording && (
-        <span className="absolute -top-1 -right-1 flex h-3 w-3">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
-        </span>
-      )}
+      <HiMicrophone size={20} />
     </button>
   );
 };

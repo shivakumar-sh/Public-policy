@@ -1,63 +1,63 @@
+// backend/services/faqService.js
+// Purpose: Automatically generates realistic citizen FAQs for government policies
+
 const Policy = require('../models/Policy');
-const { callOpenAI, parseJSONResponse } = require('../utils/openaiHelper');
-const { buildFAQPrompt } = require('../utils/promptBuilder');
+const AICache = require('../models/AICache');
+const { buildFAQMessages } = require('../utils/promptBuilder');
+const { callOpenAIForJSON, callOpenAI } = require('../utils/openaiHelper');
+const { parseFAQResponse } = require('../utils/responseParser');
+const translateService = require('./translateService');
 
-/**
- * FAQ Generation Service
- * Generates frequently asked questions for a policy
- */
-const faqService = {
-  /**
-   * Generate FAQs for a policy ID
-   */
-  generateFAQs: async (policyId, language = 'en') => {
-    const policy = await Policy.findById(policyId);
-    if (!policy) throw new Error('Policy not found');
+const generateFAQs = async (policyId, language = 'en') => {
+  const policy = await Policy.findById(policyId);
+  if (!policy) throw new Error('Policy not found');
 
-    const messages = buildFAQPrompt(policy.title, policy.content, language);
-    // Requesting a more structured response for parsing
-    messages[0].content += "\nRespond with a valid JSON array of objects with 'question' and 'answer' keys.";
-    
-    const response = await callOpenAI(messages, { temperature: 0.5 });
-    const faqs = parseJSONResponse(response);
-    
-    if (faqs) return faqs;
+  const cached = await AICache.getCached('faq', policy.content, language);
+  if (cached) return JSON.parse(cached);
 
-    // Fallback parsing if JSON fails (manual splitting)
-    return faqService.manualParseFAQs(response);
-  },
+  const messages = buildFAQMessages(policy.title, policy.content, language);
+  const jsonResult = await callOpenAIForJSON(messages, { temperature: 0.6, max_tokens: 2500 });
 
-  /**
-   * Generate FAQs from text
-   */
-  generateFAQsFromText: async (title, content, language = 'en') => {
-    const messages = buildFAQPrompt(title, content, language);
-    messages[0].content += "\nRespond with a valid JSON array of objects with 'question' and 'answer' keys.";
-    
-    const response = await callOpenAI(messages, { temperature: 0.5 });
-    return parseJSONResponse(response) || faqService.manualParseFAQs(response);
-  },
-
-  /**
-   * Manual parser for non-JSON AI responses
-   */
-  manualParseFAQs: (text) => {
-    const lines = text.split('\n').filter(l => l.trim());
-    const faqs = [];
-    let current = null;
-
-    lines.forEach(line => {
-      if (line.toLowerCase().startsWith('q') || line.includes('?')) {
-        if (current) faqs.push(current);
-        current = { question: line.replace(/^Q\d+:\s*/i, '').trim(), answer: '' };
-      } else if (current) {
-        current.answer += (current.answer ? ' ' : '') + line.replace(/^A\d+:\s*/i, '').trim();
-      }
-    });
-    
-    if (current) faqs.push(current);
-    return faqs.slice(0, 10);
+  let validFAQs = parseFAQResponse(jsonResult);
+  if (language !== 'en') {
+    validFAQs = await translateService.translateFAQs(validFAQs, language);
   }
+
+  await AICache.setCached('faq', policy.content, language, JSON.stringify(validFAQs), 48);
+
+  return validFAQs;
 };
 
-module.exports = faqService;
+const generateFAQsFromText = async (title, content, language = 'en') => {
+  const messages = buildFAQMessages(title, content, language);
+  const jsonResult = await callOpenAIForJSON(messages, { temperature: 0.6, max_tokens: 2500 });
+  let validFAQs = parseFAQResponse(jsonResult);
+  if (language !== 'en') {
+    validFAQs = await translateService.translateFAQs(validFAQs, language);
+  }
+  return validFAQs;
+};
+
+const generateQuickFAQ = async (policyId, count = 5) => {
+  const policy = await Policy.findById(policyId);
+  if (!policy) throw new Error('Policy not found');
+
+  const messages = [
+    { role: 'system', content: `Generate exactly ${count} FAQs for this policy. Return JSON array of objects with question and answer.` },
+    { role: 'user', content: `Title: ${policy.title}\nContent: ${policy.content}` }
+  ];
+  const result = await callOpenAIForJSON(messages);
+  return Array.isArray(result) ? result.slice(0, count) : [];
+};
+
+const getFAQByCategory = async (policyId, category, language = 'en') => {
+  const allFAQs = await generateFAQs(policyId, language);
+  return allFAQs.filter(faq => faq.category?.toLowerCase() === category.toLowerCase());
+};
+
+module.exports = {
+  generateFAQs,
+  generateFAQsFromText,
+  generateQuickFAQ,
+  getFAQByCategory
+};

@@ -1,77 +1,77 @@
+// backend/services/recommendService.js
+// Purpose: Personalized government scheme recommendations based on chat history
+
 const Chat = require('../models/Chat');
 const Policy = require('../models/Policy');
-const { callOpenAI, parseJSONResponse } = require('../utils/openaiHelper');
-const { buildRecommendationPrompt } = require('../utils/promptBuilder');
+const { buildRecommendationMessages, buildTopicExtractionMessages } = require('../utils/promptBuilder');
+const { callOpenAIForJSON } = require('../utils/openaiHelper');
+const { parseRecommendationsResponse, parseTopicsResponse } = require('../utils/responseParser');
 
-/**
- * Recommendation Service
- * Suggests policies based on user history and profile
- */
-const recommendService = {
-  /**
-   * Get personalized recommendations for a user
-   */
-  getRecommendations: async (userId) => {
-    // 1. Get recent chat context
-    const recentChats = await Chat.find({ user: userId })
-      .sort({ updatedAt: -1 })
-      .limit(5);
-    
-    const messages = [];
-    recentChats.forEach(chat => {
-      messages.push(...chat.messages.slice(-4).map(m => m.content));
-    });
-
-    // 2. Extract topics if history exists
-    let topics = [];
-    if (messages.length > 0) {
-      topics = await recommendService.extractTopicsFromChats(messages);
-    }
-
-    // 3. Get popular policies as base or fallback
-    const popular = await Policy.find({ isActive: true })
-      .sort({ views: -1 })
-      .limit(10);
-
-    if (topics.length === 0) {
-      return popular.slice(0, 3);
-    }
-
-    // 4. Generate AI recommendations
-    const userProfile = { id: userId }; // Extendable with age, location etc
-    const prompt = buildRecommendationPrompt(userProfile, topics);
-    const response = await callOpenAI(prompt, { temperature: 0.5 });
-
-    return response;
-  },
-
-  /**
-   * Extract main policy topics from chat history
-   */
-  extractTopicsFromChats: async (messages) => {
-    try {
-      const prompt = [
-        { 
-          role: 'system', 
-          content: 'Extract 3-5 main policy topics from these conversations. Return as JSON array of strings only.' 
-        },
-        { role: 'user', content: messages.join('\n').substring(0, 5000) }
-      ];
-      const response = await callOpenAI(prompt, { max_tokens: 100 });
-      return parseJSONResponse(response) || [];
-    } catch (e) {
-      return [];
-    }
-  },
-
-  /**
-   * Get most viewed policies
-   */
-  getPopularPolicies: async () => {
-    return await Policy.find({ isActive: true })
-      .sort({ views: -1 })
-      .limit(5);
-  }
+const extractTopicsFromHistory = async (messages) => {
+  if (!Array.isArray(messages) || messages.length === 0) return [];
+  const concatenated = messages.slice(-10).map(m => m.content).join('\n');
+  const promptMessages = buildTopicExtractionMessages([{ content: concatenated }]);
+  const jsonResult = await callOpenAIForJSON(promptMessages);
+  return parseTopicsResponse(jsonResult);
 };
 
-module.exports = recommendService;
+const getPopularPolicies = async (count = 3) => {
+  const policies = await Policy.find().sort({ views: -1 }).limit(count);
+  return policies.map((policy, index) => ({
+    rank: index + 1,
+    schemeName: policy.title,
+    ministry: policy.ministry || 'Government of India',
+    whyRelevant: 'This is one of the most accessed policies by citizens.',
+    keyBenefit: (policy.description || '').slice(0, 100),
+    quickApplyStep: 'Visit the official website or nearest CSC center to apply.',
+    officialWebsite: '',
+    estimatedBenefit: 'Varies based on eligibility',
+    urgency: 'medium',
+    urgencyReason: 'Popular scheme worth knowing about'
+  }));
+};
+
+const getPersonalizedRecommendations = async (userId) => {
+  const chats = await Chat.find({ user: userId }).sort({ updatedAt: -1 }).limit(10);
+  const allMessages = chats.reduce((acc, chat) => acc.concat(chat.messages || []), []);
+
+  if (allMessages.length < 3) {
+    return await getPopularPolicies();
+  }
+
+  const recentTopics = await extractTopicsFromHistory(allMessages);
+  const userProfile = { language: chats[0]?.language || 'en' };
+
+  const messages = buildRecommendationMessages(userProfile, recentTopics);
+  const jsonResult = await callOpenAIForJSON(messages, { temperature: 0.7 });
+  const recommendations = parseRecommendationsResponse(jsonResult);
+
+  if (!recommendations || recommendations.length === 0) {
+    return await getPopularPolicies();
+  }
+
+  return recommendations;
+};
+
+const getRecommendationsByCategory = async (category, count = 3) => {
+  const policies = await Policy.find({ category }).sort({ views: -1 }).limit(count);
+  return policies.map((policy, index) => ({
+    rank: index + 1,
+    schemeName: policy.title,
+    ministry: policy.ministry || 'Government of India',
+    whyRelevant: `Highly relevant for citizens interested in ${category}.`,
+    keyBenefit: (policy.description || '').slice(0, 100),
+    quickApplyStep: 'Check official portal guidelines.',
+    officialWebsite: '',
+    estimatedBenefit: 'Varies',
+    urgency: 'medium',
+    urgencyReason: 'Key departmental scheme'
+  }));
+};
+
+module.exports = {
+  getPersonalizedRecommendations,
+  extractTopicsFromHistory,
+  getPopularPolicies,
+  getRecommendationsByCategory
+};
