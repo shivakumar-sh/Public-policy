@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Stack: MERN](https://img.shields.io/badge/Stack-MERN-green.svg)](https://www.mongodb.com/mern-stack)
-[![AI: OpenAI GPT-4](https://img.shields.io/badge/AI-OpenAI%20GPT--4-orange.svg)](https://openai.com/)
+[![AI: OpenAI GPT-3.5](https://img.shields.io/badge/AI-OpenAI%20GPT--3.5-orange.svg)](https://openai.com/)
 
 An AI-powered web platform designed to help Indian citizens understand complex government policies, laws, and public schemes in simple, plain language.
 
@@ -15,6 +15,7 @@ An AI-powered web platform designed to help Indian citizens understand complex g
 - **🎤 Voice Features**: Speech-to-Text input and Text-to-Speech output for accessibility.
 - **🌓 Dark Mode**: Premium, eye-friendly design system with full dark mode support.
 - **📊 Admin Dashboard**: Comprehensive platform analytics and user/policy management.
+- **🛡️ Smart Demo Mode**: Automatic fallback to offline mock responses if OpenAI API quotas are exceeded.
 
 ## 🛠️ Tech Stack
 
@@ -22,7 +23,7 @@ An AI-powered web platform designed to help Indian citizens understand complex g
 | :--- | :--- |
 | React.js (v18) | Node.js & Express |
 | Tailwind CSS | MongoDB & Mongoose |
-| Framer Motion (Animations) | OpenAI API (GPT-4) |
+| Framer Motion (Animations) | OpenAI API (GPT-3.5-Turbo) |
 | Context API (State Mgmt) | JWT & Bcrypt (Security) |
 | React Hot Toast | Multer & PDF-Parse |
 
@@ -30,8 +31,8 @@ An AI-powered web platform designed to help Indian citizens understand complex g
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/yourusername/public-policy-explainer-bot.git
-cd public-policy-explainer-bot
+git clone https://github.com/shivakumar-sh/Public-policy.git
+cd Public-policy/public-policy-explainer-bot
 ```
 
 ### 2. Setup Backend
