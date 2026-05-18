@@ -147,12 +147,26 @@ const createStreamingResponse = async (messages, options = {}) => {
     };
   }
 
-  return await openai.chat.completions.create({
-    model: finalOptions.model,
-    messages,
-    temperature: finalOptions.temperature,
-    stream: true
-  });
+  try {
+    return await openai.chat.completions.create({
+      model: finalOptions.model,
+      messages,
+      temperature: finalOptions.temperature,
+      stream: true
+    });
+  } catch (error) {
+    console.warn('⚠️ OpenAI Streaming Error (e.g. 429 Quota Exceeded). Falling back to Mock Stream.');
+    const mockText = getMockResponse(messages);
+    return {
+      async *[Symbol.asyncIterator]() {
+        const words = mockText.split(' ');
+        for (const word of words) {
+          await new Promise(r => setTimeout(r, 20));
+          yield { choices: [{ delta: { content: word + ' ' } }] };
+        }
+      }
+    };
+  }
 };
 
 module.exports = {
