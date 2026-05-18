@@ -10,7 +10,13 @@ export const sendMessage = async ({ chatId, message, language }) => {
 
 export const streamMessage = async ({ chatId, message, language }, callbacks) => {
   const { onChunk, onMetadata, onDone, onError } = callbacks;
-  const token = localStorage.getItem('token');
+  let token = localStorage.getItem('token');
+  if (!token) {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      try { token = JSON.parse(userStr).token; } catch (e) {}
+    }
+  }
   const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
   try {
