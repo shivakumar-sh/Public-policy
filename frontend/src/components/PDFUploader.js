@@ -66,7 +66,7 @@ const PDFUploader = ({ onSummarized, onError }) => {
     setUploadProgress(0);
 
     const formData = new FormData();
-    formData.append('document', file);
+    formData.append('pdf', file);
 
     try {
       const uploadRes = await api.post('/upload/pdf', formData, {

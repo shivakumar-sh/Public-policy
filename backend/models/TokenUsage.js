@@ -1,6 +1,3 @@
-// backend/models/TokenUsage.js
-// Purpose: Mongoose schema for tracking AI token consumption and cost analytics
-
 const mongoose = require('mongoose');
 
 const tokenUsageSchema = new mongoose.Schema({
@@ -10,14 +7,13 @@ const tokenUsageSchema = new mongoose.Schema({
     required: true,
     index: true
   },
-  chatId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Chat'
+  endpoint: {
+    type: String,
+    required: false
   },
   feature: {
     type: String,
-    enum: ['chat', 'summarize', 'simplify', 'compare', 'translate', 'faq', 'recommend', 'title', 'followup'],
-    required: true
+    required: false
   },
   model: {
     type: String,
@@ -25,18 +21,19 @@ const tokenUsageSchema = new mongoose.Schema({
   },
   promptTokens: {
     type: Number,
-    default: 0
+    required: true
   },
   completionTokens: {
     type: Number,
-    default: 0
+    required: true
   },
   totalTokens: {
     type: Number,
-    default: 0
+    required: true
   },
   estimatedCostUSD: {
     type: Number,
+    required: false,
     default: 0
   },
   language: {
@@ -45,73 +42,16 @@ const tokenUsageSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
-// Statics
-tokenUsageSchema.statics.getUserStats = async function(userId) {
-  const stats = await this.aggregate([
-    { $match: { userId: new mongoose.Types.ObjectId(userId) } },
-    { $group: {
-      _id: '$feature',
-      totalTokens: { $sum: '$totalTokens' },
-      totalCost: { $sum: '$estimatedCostUSD' }
-    }}
-  ]);
-  return stats.reduce((acc, curr) => {
-    acc[curr._id] = { totalTokens: curr.totalTokens, totalCost: curr.totalCost };
-    return acc;
-  }, {});
+tokenUsageSchema.statics.calculateCost = function(model, promptTokens, completionTokens) {
+  const rates = {
+    'gpt-4-turbo-preview': { prompt: 10 / 1000000, completion: 30 / 1000000 },
+    'default': { prompt: 1.5 / 1000000, completion: 2 / 1000000 }
+  };
+  const rate = rates[model] || rates['default'];
+  return (promptTokens * rate.prompt) + (completionTokens * rate.completion);
 };
 
-tokenUsageSchema.statics.getDailyStats = async function(days = 7) {
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
+tokenUsageSchema.index({ userId: 1, createdAt: -1 });
 
-  return await this.aggregate([
-    { $match: { createdAt: { $gte: startDate } } },
-    { $group: {
-      _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-      totalTokens: { $sum: '$totalTokens' },
-      totalCost: { $sum: '$estimatedCostUSD' }
-    }},
-    { $sort: { _id: 1 } },
-    { $project: { date: '$_id', totalTokens: 1, totalCost: 1, _id: 0 } }
-  ]);
-};
-
-tokenUsageSchema.statics.getTopUsers = async function(limit = 10) {
-  return await this.aggregate([
-    { $group: {
-      _id: '$userId',
-      totalTokens: { $sum: '$totalTokens' },
-      totalCost: { $sum: '$estimatedCostUSD' }
-    }},
-    { $sort: { totalTokens: -1 } },
-    { $limit: limit },
-    { $lookup: {
-      from: 'users',
-      localField: '_id',
-      foreignField: '_id',
-      as: 'user'
-    }},
-    { $unwind: '$user' },
-    { $project: { userId: '$_id', name: '$user.name', email: '$user.email', totalTokens: 1, totalCost: 1, _id: 0 } }
-  ]);
-};
-
-const calculateCost = (model, promptTokens, completionTokens) => {
-  let promptRate = 0;
-  let completionRate = 0;
-
-  if (model.includes('gpt-4')) {
-    promptRate = 0.01 / 1000;
-    completionRate = 0.03 / 1000;
-  } else if (model.includes('gpt-3.5')) {
-    promptRate = 0.001 / 1000;
-    completionRate = 0.002 / 1000;
-  }
-
-  return (promptTokens * promptRate) + (completionTokens * completionRate);
-};
-
-const TokenUsage = mongoose.models.TokenUsage || mongoose.model('TokenUsage', tokenUsageSchema);
+const TokenUsage = mongoose.model('TokenUsage', tokenUsageSchema);
 module.exports = TokenUsage;
-module.exports.calculateCost = calculateCost;

@@ -72,47 +72,47 @@ export const streamMessage = async ({ chatId, message, language }, callbacks) =>
 
 export const getChatHistory = async (page = 1, limit = 20) => {
   const response = await api.get(`/chat/history?page=${page}&limit=${limit}`);
-  return response.data?.data?.items || [];
+  return response.data?.items || [];
 };
 
 export const getChatById = async (chatId) => {
   const response = await api.get(`/chat/${chatId}`);
-  return response.data?.data || null;
+  return response.data || null;
 };
 
 export const deleteChat = async (chatId) => {
   const response = await api.delete(`/chat/${chatId}`);
-  return response.data?.success || false;
+  return response.success || false;
 };
 
 export const translateMessage = async (text, language) => {
   const response = await api.post('/chat/translate', { text, language });
-  return response.data?.data?.translated || text;
+  return response.data?.translated || text;
 };
 
 export const simplifyPolicy = async (policyId, language) => {
   const response = await api.post(`/chat/policies/${policyId}/simplify`, { language });
-  return response.data?.data?.simplified || '';
+  return response.data?.simplified || '';
 };
 
 export const comparePolicies = async (policyId1, policyId2, language) => {
   const response = await api.post('/chat/policies/compare', { policyId1, policyId2, language });
-  return response.data?.data?.comparison || '';
+  return response.data?.comparison || '';
 };
 
 export const generateFAQs = async (policyId, language) => {
   const response = await api.post(`/chat/policies/${policyId}/faq`, { language });
-  return response.data?.data?.faqs || [];
+  return response.data?.faqs || [];
 };
 
 export const summarizeDocument = async (documentId, language) => {
   const response = await api.post(`/chat/documents/${documentId}/summarize`, { language });
-  return response.data?.data?.summary || '';
+  return response.data?.summary || '';
 };
 
 export const getRecommendations = async () => {
   const response = await api.get('/chat/recommendations');
-  return response.data?.data?.recommendations || [];
+  return response.data?.recommendations || [];
 };
 
 const chatService = {

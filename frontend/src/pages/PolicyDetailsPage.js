@@ -1,19 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { LanguageContext } from '../context/LanguageContext';
 import { HiOutlineArrowLeft, HiSparkles, HiBookOpen, HiBookmark, HiShare } from 'react-icons/hi';
 import policyService from '../services/policyService';
+import chatService from '../services/chatService';
 import LoadingSpinner from '../components/LoadingSpinner';
 import FeedbackForm from '../components/FeedbackForm';
 import { formatDate } from '../utils/helpers';
 import ReactMarkdown from 'react-markdown';
 import { toast } from 'react-hot-toast';
+import useBookmarks from '../hooks/useBookmarks';
 
 const PolicyDetailsPage = () => {
   const { id } = useParams();
+  const { language } = useContext(LanguageContext);
   const [policy, setPolicy] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isSimplifying, setIsSimplifying] = useState(false);
   const [activeTab, setActiveTab] = useState('simplified'); // 'simplified' or 'original'
+  const { isBookmarked, toggleBookmark } = useBookmarks();
+  const bookmarked = isBookmarked(id);
 
   useEffect(() => {
     const fetchPolicy = async () => {
@@ -32,10 +38,14 @@ const PolicyDetailsPage = () => {
   const handleSimplify = async () => {
     setIsSimplifying(true);
     try {
-      const simplified = await policyService.simplify(id);
-      setPolicy({ ...policy, simplifiedContent: simplified });
-      setActiveTab('simplified');
-      toast.success('AI simplification complete!');
+      const simplified = await chatService.simplifyPolicy(id, language);
+      if (simplified) {
+        setPolicy({ ...policy, simplifiedContent: simplified });
+        setActiveTab('simplified');
+        toast.success('AI simplification complete!');
+      } else {
+        throw new Error('Empty response');
+      }
     } catch (error) {
       toast.error('Simplification failed');
     } finally {
@@ -66,7 +76,11 @@ const PolicyDetailsPage = () => {
               <p className="text-slate-500 dark:text-slate-400 mt-2 font-medium">{policy.ministry}</p>
             </div>
             <div className="flex gap-2">
-              <button className="p-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 transition-all text-slate-600 dark:text-slate-300 shadow-sm" title="Bookmark">
+              <button 
+                onClick={() => toggleBookmark(id)}
+                className={`p-3 rounded-xl transition-all shadow-sm active:scale-95 ${bookmarked ? 'bg-primary/10 text-primary border border-primary/20' : 'bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50'}`}
+                title={bookmarked ? "Bookmarked" : "Bookmark"}
+              >
                 <HiBookmark size={24} />
               </button>
               <button className="p-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-50 transition-all text-slate-600 dark:text-slate-300 shadow-sm" title="Share">
@@ -153,8 +167,8 @@ const PolicyDetailsPage = () => {
             <div className="card">
               <h4 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-4">Quick Links</h4>
               <ul className="space-y-2">
-                <li><a href="#" className="text-sm text-primary font-bold hover:underline">Official Notification PDF</a></li>
-                <li><a href="#" className="text-sm text-primary font-bold hover:underline">Apply for this scheme</a></li>
+                <li><a href="#!" className="text-sm text-primary font-bold hover:underline">Official Notification PDF</a></li>
+                <li><a href="#!" className="text-sm text-primary font-bold hover:underline">Apply for this scheme</a></li>
               </ul>
             </div>
           </div>

@@ -8,7 +8,7 @@ const ChatbotPage = () => {
 
   useEffect(() => {
     loadChats();
-  }, []);
+  }, [loadChats]);
 
   return (
     <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-slate-50 dark:bg-slate-900 transition-colors">

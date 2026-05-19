@@ -1,9 +1,10 @@
 // frontend/src/hooks/useChatState.js
 // Purpose: Core stateful hook managing chat conversations, streaming, and sidebar history for the ChatProvider
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useContext } from 'react';
 import { getChatHistory, getChatById, deleteChat as apiDeleteChat, sendMessage as apiSendMessage } from '../services/chatService';
 import useStream from './useStream';
+import { LanguageContext } from '../context/LanguageContext';
 
 const useChatState = () => {
   const [messages, setMessages] = useState([]);
@@ -13,7 +14,8 @@ const useChatState = () => {
   const [followUps, setFollowUps] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [currentLanguage, setCurrentLanguage] = useState('en');
+
+  const { language: currentLanguage, setLanguage: setCurrentLanguage } = useContext(LanguageContext);
 
   const messagesEndRef = useRef(null);
   const { streamingText, isStreaming, startStream } = useStream();

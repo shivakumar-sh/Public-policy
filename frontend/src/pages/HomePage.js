@@ -4,10 +4,14 @@ import { HiOutlineSearch, HiLightningBolt, HiTranslate, HiDocumentText } from 'r
 import PolicyCard from '../components/PolicyCard';
 import policyService from '../services/policyService';
 import LoadingSpinner from '../components/LoadingSpinner';
+import useAuth from '../hooks/useAuth';
+import useTranslation from '../hooks/useTranslation';
 
 const HomePage = () => {
   const [featuredPolicies, setFeaturedPolicies] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { isAuthenticated } = useAuth();
+  const { t } = useTranslation();
 
   useEffect(() => {
     const fetchPolicies = async () => {
@@ -34,18 +38,18 @@ const HomePage = () => {
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl sm:text-6xl font-black text-slate-900 dark:text-white leading-tight mb-6">
-            Understand Indian Policies <br />
-            <span className="text-primary">Without the Legal Jargon.</span>
+            {t('heroTitle')} <br />
+            <span className="text-primary">{t('heroHighlight')}</span>
           </h1>
           <p className="max-w-2xl mx-auto text-lg text-slate-500 dark:text-slate-400 mb-10 leading-relaxed">
-            Our AI-powered assistant breaks down complex government laws and schemes into simple, plain language for every citizen.
+            {t('heroSubtitle')}
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link to="/chat" className="btn-primary flex items-center justify-center gap-2 text-lg px-8">
-              <HiLightningBolt /> Start Chatting
+              <HiLightningBolt /> {t('startChatting')}
             </Link>
             <Link to="/policies" className="btn-secondary flex items-center justify-center gap-2 text-lg px-8">
-              <HiOutlineSearch /> Browse Policies
+              <HiOutlineSearch /> {t('browsePolicies')}
             </Link>
           </div>
         </div>
@@ -107,13 +111,19 @@ const HomePage = () => {
       <section className="py-24 bg-primary overflow-hidden relative">
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">Empowering Citizens with Knowledge</h2>
+          <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">{t('empoweringTitle')}</h2>
           <p className="text-white/80 max-w-xl mx-auto mb-10 text-lg">
-            Join thousands of users who are making better informed decisions by understanding their rights and benefits.
+            {t('empoweringDesc')}
           </p>
-          <Link to="/register" className="bg-white text-primary px-10 py-4 rounded-xl font-bold text-lg hover:shadow-2xl hover:-translate-y-1 transition-all inline-block">
-            Get Started for Free
-          </Link>
+          {isAuthenticated ? (
+            <Link to="/policies" className="bg-white text-primary px-10 py-4 rounded-xl font-bold text-lg hover:shadow-2xl hover:-translate-y-1 transition-all inline-block">
+              {t('explorePolicies')}
+            </Link>
+          ) : (
+            <Link to="/register" className="bg-white text-primary px-10 py-4 rounded-xl font-bold text-lg hover:shadow-2xl hover:-translate-y-1 transition-all inline-block">
+              {t('getStartedFree')}
+            </Link>
+          )}
         </div>
       </section>
     </div>

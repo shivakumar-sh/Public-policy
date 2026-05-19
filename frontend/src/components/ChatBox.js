@@ -10,11 +10,13 @@ import VoiceInput from './VoiceInput';
 import FollowUpChips from './FollowUpChips';
 import LanguageSelector from './LanguageSelector';
 import PDFUploader from './PDFUploader';
+import useTranslation from '../hooks/useTranslation';
 import { HiOutlinePaperClip, HiOutlinePaperAirplane, HiOutlineSparkles, HiOutlinePlus } from 'react-icons/hi';
 
 const ChatBox = () => {
   const [inputText, setInputText] = useState('');
   const [showPDFUploader, setShowPDFUploader] = useState(false);
+  const { t } = useTranslation();
 
   const {
     messages,
@@ -154,7 +156,7 @@ const ChatBox = () => {
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask NyayaBot about any government policy..."
+            placeholder={t('chatPlaceholder')}
             rows={1}
             maxLength={1000}
             className="flex-1 resize-none border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3.5 text-sm bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:bg-white dark:focus:bg-slate-900 transition-all font-medium placeholder:text-slate-400"

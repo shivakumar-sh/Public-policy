@@ -1,7 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const Policy = require('../models/Policy');
 const { validatePolicy } = require('../utils/validators');
-const { generateAIResponse } = require('../utils/openaiHelper');
+const { callOpenAIWithFallback } = require('../utils/openaiHelper');
 
 // @desc    Get all policies
 // @route   GET /api/policies
@@ -102,7 +102,12 @@ const simplifyPolicy = asyncHandler(async (req, res) => {
     const prompt = `Simplify the following government policy content for an ordinary citizen: ${policy.content}`;
     const systemPrompt = "You are a Public Policy Explainer AI assistant. Break down complex legal text into simple, easy-to-understand language using bullet points.";
     
-    const simplified = await generateAIResponse(prompt, systemPrompt, req.user.language || 'en');
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: prompt }
+    ];
+    
+    const simplified = await callOpenAIWithFallback(messages);
     
     policy.simplifiedContent = simplified;
     await policy.save();
@@ -117,6 +122,42 @@ const simplifyPolicy = asyncHandler(async (req, res) => {
   }
 });
 
+// @desc    Submit policy feedback
+// @route   POST /api/policies/:id/feedback
+// @access  Private
+const submitPolicyFeedback = asyncHandler(async (req, res) => {
+  const { rating, comment } = req.body;
+  const policyId = req.params.id;
+  const Feedback = require('../models/Feedback');
+
+  const policy = await Policy.findById(policyId);
+  if (!policy) {
+    res.status(404);
+    throw new Error('Policy not found');
+  }
+
+  const feedback = await Feedback.create({
+    user: req.user._id,
+    policy: policyId,
+    rating,
+    comment: comment || ''
+  });
+
+  // Analyze sentiment in the background
+  try {
+    const sentimentService = require('../services/sentimentService');
+    await sentimentService.analyzeFeedback(feedback._id);
+  } catch (err) {
+    console.error('Sentiment analysis failed:', err.message);
+  }
+
+  res.status(201).json({
+    success: true,
+    data: feedback,
+    message: 'Feedback submitted successfully'
+  });
+});
+
 module.exports = {
   getPolicies,
   getPolicyById,
@@ -124,4 +165,5 @@ module.exports = {
   updatePolicy,
   deletePolicy,
   simplifyPolicy,
+  submitPolicyFeedback,
 };

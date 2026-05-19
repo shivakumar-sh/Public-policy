@@ -3,7 +3,7 @@ import { HiStar } from 'react-icons/hi';
 import api from '../services/api';
 import { toast } from 'react-hot-toast';
 
-const FeedbackForm = ({ chatId }) => {
+const FeedbackForm = ({ policyId }) => {
   const [rating, setRating] = useState(5);
   const [hover, setHover] = useState(0);
   const [comment, setComment] = useState('');
@@ -13,7 +13,7 @@ const FeedbackForm = ({ chatId }) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      await api.post('/feedback', { chat: chatId, rating, comment });
+      await api.post(`/policies/${policyId}/feedback`, { rating, comment });
       toast.success('Thank you for your feedback!');
       setComment('');
     } catch (error) {

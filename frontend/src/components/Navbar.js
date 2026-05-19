@@ -3,12 +3,14 @@ import { Link, useNavigate } from 'react-router-dom';
 import { HiMenu, HiX, HiMoon, HiSun, HiUserCircle } from 'react-icons/hi';
 import useAuth from '../hooks/useAuth';
 import useDarkMode from '../hooks/useDarkMode';
+import useTranslation from '../hooks/useTranslation';
 import LanguageSelector from './LanguageSelector';
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const { user, logout, isAuthenticated } = useAuth();
   const { isDarkMode, toggleDarkMode } = useDarkMode();
+  const { t } = useTranslation();
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -26,10 +28,10 @@ const Navbar = () => {
               <span className="text-xl font-bold text-slate-900 dark:text-white hidden sm:block">PolicyBot</span>
             </Link>
             <div className="hidden md:ml-8 md:flex md:space-x-4">
-              <Link to="/" className="px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-white">Home</Link>
-              <Link to="/policies" className="px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-white">Policies</Link>
-              <Link to="/chat" className="px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-white">Chat AI</Link>
-              <Link to="/compare" className="px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-white">Compare</Link>
+              <Link to="/" className="px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-white">{t('home')}</Link>
+              <Link to="/policies" className="px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-white">{t('policies')}</Link>
+              <Link to="/chat" className="px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-white">{t('chatAI')}</Link>
+              <Link to="/compare" className="px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-white">{t('compare')}</Link>
             </div>
           </div>
 
@@ -49,8 +51,8 @@ const Navbar = () => {
               </div>
             ) : (
               <div className="flex items-center space-x-2">
-                <Link to="/login" className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-primary">Login</Link>
-                <Link to="/register" className="btn-primary py-2 px-4 text-sm">Register</Link>
+                <Link to="/login" className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-primary">{t('login')}</Link>
+                <Link to="/register" className="btn-primary py-2 px-4 text-sm">{t('register')}</Link>
               </div>
             )}
           </div>
@@ -67,10 +69,10 @@ const Navbar = () => {
       {isOpen && (
         <div className="md:hidden bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-top-4">
           <div className="px-2 pt-2 pb-3 space-y-1">
-            <Link to="/" className="block px-3 py-2 text-base font-medium text-slate-600 dark:text-slate-300">Home</Link>
-            <Link to="/policies" className="block px-3 py-2 text-base font-medium text-slate-600 dark:text-slate-300">Policies</Link>
-            <Link to="/chat" className="block px-3 py-2 text-base font-medium text-slate-600 dark:text-slate-300">Chat AI</Link>
-            <Link to="/compare" className="block px-3 py-2 text-base font-medium text-slate-600 dark:text-slate-300">Compare</Link>
+            <Link to="/" className="block px-3 py-2 text-base font-medium text-slate-600 dark:text-slate-300">{t('home')}</Link>
+            <Link to="/policies" className="block px-3 py-2 text-base font-medium text-slate-600 dark:text-slate-300">{t('policies')}</Link>
+            <Link to="/chat" className="block px-3 py-2 text-base font-medium text-slate-600 dark:text-slate-300">{t('chatAI')}</Link>
+            <Link to="/compare" className="block px-3 py-2 text-base font-medium text-slate-600 dark:text-slate-300">{t('compare')}</Link>
             <div className="flex items-center justify-between px-3 py-2">
               <LanguageSelector />
               <button onClick={toggleDarkMode} className="p-2 text-slate-500 rounded-full">
@@ -84,8 +86,8 @@ const Navbar = () => {
               </>
             ) : (
               <>
-                <Link to="/login" className="block px-3 py-2 text-base font-medium text-slate-600">Login</Link>
-                <Link to="/register" className="block px-3 py-2 text-base font-medium text-primary">Register</Link>
+                <Link to="/login" className="block px-3 py-2 text-base font-medium text-slate-600">{t('login')}</Link>
+                <Link to="/register" className="block px-3 py-2 text-base font-medium text-primary">{t('register')}</Link>
               </>
             )}
           </div>

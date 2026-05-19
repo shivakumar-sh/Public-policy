@@ -21,9 +21,9 @@ const UserDashboardPage = () => {
           api.get('/chat/history'),
           api.get('/users/bookmarks')
         ]);
-        setStats(statsRes.data);
-        setRecentChats(chatsRes.data.slice(0, 5));
-        setBookmarks(bookmarksRes.data.slice(0, 5));
+        setStats(statsRes.data || { chats: 0, bookmarks: 0, documents: 0 });
+        setRecentChats(chatsRes.data?.items?.slice(0, 5) || []);
+        setBookmarks(bookmarksRes.data?.slice(0, 5) || []);
       } catch (e) {
         console.error('Failed to load dashboard data');
       } finally {

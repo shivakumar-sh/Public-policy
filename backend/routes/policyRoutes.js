@@ -7,6 +7,7 @@ const {
   updatePolicy,
   deletePolicy,
   simplifyPolicy,
+  submitPolicyFeedback,
 } = require('../controllers/policyController');
 const { compareTwoPolicies: comparePolicies, generatePolicyFAQs: generateFAQs } = require('../controllers/chatController');
 const { protect } = require('../middleware/authMiddleware');
@@ -20,5 +21,6 @@ router.delete('/:id', protect, admin, deletePolicy);
 router.post('/:id/simplify', protect, simplifyPolicy);
 router.post('/compare', protect, comparePolicies);
 router.post('/:id/faq', protect, generateFAQs);
+router.post('/:id/feedback', protect, submitPolicyFeedback);
 
 module.exports = router;
